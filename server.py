@@ -44,12 +44,19 @@ def get_bars(symbol: str, tf: str, count: int) -> dict:
     return {"bars": bars, "bid": tick.bid, "ask": tick.ask}
 
 
+def all_symbols() -> tuple:
+    symbols = mt5.symbols_get()
+    if symbols is None:
+        raise RuntimeError(f"MT5 returned no symbol list: {mt5.last_error()}")
+    return symbols
+
+
 def group_of(path: str) -> str:
     return path.rsplit("\\", 1)[0]
 
 
 def get_groups() -> list:
-    counts = Counter(group_of(s.path) for s in mt5.symbols_get())
+    counts = Counter(group_of(s.path) for s in all_symbols())
     return [{"group": g, "count": n} for g, n in sorted(counts.items())]
 
 
@@ -76,7 +83,7 @@ def forecast(closes: np.ndarray, n: int, h: int) -> dict:
 def scan(group: str, tf: str, n: int, h: int) -> dict:
     if tf not in TIMEFRAMES:
         raise ValueError(f"Unknown timeframe {tf}. Use one of {', '.join(TIMEFRAMES)}")
-    symbols = [s.name for s in mt5.symbols_get() if group_of(s.path) == group]
+    symbols = [s.name for s in all_symbols() if group_of(s.path) == group]
     if not symbols:
         raise ValueError(f"No symbols in group {group}")
     rows, skipped = [], []
@@ -95,17 +102,19 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path == "/":
             self.send(200, PAGE, "text/html; charset=utf-8")
-        elif url.path == "/api/symbols":
-            self.send_json(200, {"symbols": sorted(s.name for s in mt5.symbols_get())})
-        elif url.path == "/api/groups":
-            self.send_json(200, {"groups": get_groups()})
-        elif url.path in ("/api/bars", "/api/scan"):
+        elif url.path.startswith("/api/"):
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             try:
-                if url.path == "/api/bars":
+                if url.path == "/api/symbols":
+                    data = {"symbols": sorted(s.name for s in all_symbols())}
+                elif url.path == "/api/groups":
+                    data = {"groups": get_groups()}
+                elif url.path == "/api/bars":
                     data = get_bars(q["symbol"], q["tf"], int(q["count"]))
-                else:
+                elif url.path == "/api/scan":
                     data = scan(q["group"], q["tf"], int(q["lookback"]), int(q["horizon"]))
+                else:
+                    raise ValueError(f"Unknown endpoint {url.path}")
                 self.send_json(200, data)
             except (ValueError, RuntimeError) as e:
                 self.send_json(400, {"error": str(e)})
@@ -140,6 +149,8 @@ if __name__ == "__main__":
     if not mt5.initialize():
         raise SystemExit(f"Cannot connect to MetaTrader 5 (is it open and logged in?): {mt5.last_error()}")
     info = mt5.account_info()
+    if info is None:
+        raise SystemExit(f"MetaTrader 5 is open but not logged in to an account: {mt5.last_error()}")
     print(f"Connected to MT5 account {info.login} on {info.server}")
     print(f"Open http://127.0.0.1:{PORT}")
     # Single-threaded on purpose: the MetaTrader5 package is not thread-safe.

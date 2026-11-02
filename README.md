@@ -4,12 +4,16 @@
 
 ## ติดตั้งครั้งแรก
 1. ติดตั้ง Python 3.10 ขึ้นไปจาก https://www.python.org (ติ๊ก "Add Python to PATH")
-2. เปิด Command Prompt แล้วพิมพ์ `pip install MetaTrader5`
+2. เปิด Command Prompt ในโฟลเดอร์นี้ แล้วพิมพ์ทีละบรรทัด:
+   ```
+   py -m venv .venv
+   .venv\Scripts\python.exe -m pip install MetaTrader5
+   ```
 3. ใน MT5 ไปที่ Tools → Options → Expert Advisors แล้วติ๊ก "Allow algorithmic trading"
 
 ## ใช้งาน
 1. เปิด MT5 ให้ล็อกอินอยู่
-2. ในโฟลเดอร์นี้ พิมพ์ `python server.py`
+2. ในโฟลเดอร์นี้ พิมพ์ `.venv\Scripts\python.exe server.py`
 3. เปิดเบราว์เซอร์ไปที่ http://127.0.0.1:8765
 
 กราฟอัปเดตทุก 2 วินาที พิมพ์ชื่อสัญลักษณ์ได้ทุกตัวที่โบรกเกอร์มี (มีรายการให้เลือก) ถ้าขึ้นว่าไม่พบสัญลักษณ์ ให้ดูชื่อที่ถูกต้องใน Market Watch เช่น `XAUUSDm` หรือ `GOLD`
