@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="th">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MT5 Live Forecast Chart</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Thai:wght@400;500;700&display=swap">
+<style>
+/* Layout: terminal strip on top, chart takes the width, readout grid underneath */
+:root {
+  --bg: #f6f5f1; --panel: #ffffff; --fg: #1d1c19; --muted: #6b675d; --line: #e2dfd6;
+  --gold: #a87a12; --up: #1f8a5b; --down: #c2412d; --fc: #3b5bdb;
+  --ema1: #b8860b; --ema2: #7a5cc4; --bb: #8d8a80;
+  --sans: "IBM Plex Sans Thai", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121210; --panel: #1b1a17; --fg: #ecebe6; --muted: #9d998e; --line: #2c2a25;
+  --gold: #e0b84a; --up: #3ecf8e; --down: #ff6b57; --fc: #7c9bff;
+  --ema1: #e0b84a; --ema2: #b39cff; --bb: #6f6c63; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #121210; --panel: #1b1a17; --fg: #ecebe6; --muted: #9d998e; --line: #2c2a25;
+  --gold: #e0b84a; --up: #3ecf8e; --down: #ff6b57; --fc: #7c9bff;
+  --ema1: #e0b84a; --ema2: #b39cff; --bb: #6f6c63; color-scheme: dark;
+}
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); }
+.wrap { max-width: 1200px; margin: 0 auto; padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+h1 { margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }
+h1 .sym { font-family: var(--mono); color: var(--gold); }
+.src { font-size: .85rem; color: var(--muted); }
+.src b { color: var(--fg); font-weight: 500; }
+.pill { display: inline-block; font-size: .72rem; letter-spacing: .04em; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
+.pill.live { color: var(--up); border-color: var(--up); }
+.pill.dead { color: var(--down); border-color: var(--down); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; font-size: .88rem; }
+.controls label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.controls select, .controls input[type=number], .controls input[type=text] { font: inherit; font-family: var(--mono); background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; width: 5.5em; }
+.controls input[type=checkbox] { accent-color: var(--gold); }
+select:focus-visible, input:focus-visible { outline: 2px solid var(--fc); outline-offset: 2px; }
+.err { color: var(--down); font-size: .88rem; }
+#chart { height: min(62vh, 560px); min-height: 320px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .8rem; color: var(--muted); }
+.legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.cell { background: var(--panel); padding: 12px 14px; display: grid; gap: 4px; min-width: 0; }
+.k { font-size: .74rem; color: var(--muted); letter-spacing: .03em; }
+.v { font-family: var(--mono); font-size: 1.15rem; font-variant-numeric: tabular-nums; font-weight: 600; }
+.s { font-size: .78rem; color: var(--muted); font-family: var(--mono); }
+@media (max-width: 720px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+.up { color: var(--up); } .down { color: var(--down); }
+.note { font-size: .84rem; color: var(--muted); line-height: 1.65; max-width: 72ch; }
+.scan { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 20px; }
+.scan h2 { margin: 0; font-size: 1.15rem; }
+.tablebox { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); max-height: 520px; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+th, td { padding: 8px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 500; font-size: .76rem; cursor: pointer; user-select: none; }
+th[aria-sort] { color: var(--fg); }
+td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--bg); }
+.btn { font: inherit; background: var(--fg); color: var(--bg); border: 0; border-radius: 6px; padding: 6px 14px; cursor: pointer; }
+.btn:disabled { opacity: .5; cursor: wait; }
+.note code { font-family: var(--mono); font-size: .8rem; color: var(--fg); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1><span class="sym" id="symTitle">XAUUSD</span> กราฟราคาและพยากรณ์</h1>
+    <div class="src">ข้อมูล: <b id="srcName">กำลังเชื่อมต่อ MT5…</b><span id="srcPill" class="pill"></span></div>
+  </header>
+
+  <div class="controls">
+    <label for="symbol">สัญลักษณ์ <input type="text" id="symbol" value="XAUUSD" list="symbols" spellcheck="false"><datalist id="symbols"></datalist></label>
+    <label for="tf">Timeframe <select id="tf"><option>M1</option><option>M5</option><option selected>M15</option><option>M30</option><option>H1</option><option>H4</option><option>D1</option></select></label>
+    <label for="lookback">ใช้แท่งย้อนหลัง <input type="number" id="lookback" value="100" min="20" max="500" step="10"></label>
+    <label for="horizon">พยากรณ์ล่วงหน้า (แท่ง) <input type="number" id="horizon" value="24" min="1" max="200"></label>
+    <label for="showEma"><input type="checkbox" id="showEma" checked> EMA 20/50</label>
+    <label for="showBb"><input type="checkbox" id="showBb"> Bollinger 20,2</label>
+    <span class="err" id="err" role="alert"></span>
+  </div>
+
+  <div id="chart"></div>
+  <div class="legend">
+    <span><i style="background:var(--fc)"></i>เส้นพยากรณ์ (Linear regression)</span>
+    <span><i style="background:var(--fc);opacity:.5"></i>ช่วงคาดการณ์ 95% (เส้นประ)</span>
+    <span><i style="background:var(--ema1)"></i>EMA 20</span>
+    <span><i style="background:var(--ema2)"></i>EMA 50</span>
+    <span>▲▼ EMA ตัดกัน</span>
+  </div>
+
+  <div class="grid" id="stats"></div>
+
+  <p class="note">
+    เส้นพยากรณ์ลากเส้นแนวโน้มจากราคาปิดย้อนหลังแล้วต่อออกไปข้างหน้า แถบสีฟ้าคือช่วงที่ราคาน่าจะอยู่ถ้าแนวโน้มเดิมยังคงอยู่
+    ช่อง “ทดสอบย้อนหลัง” วัดว่าวิธีนี้ทายทิศทางถูกกี่ % บนข้อมูลชุดเดียวกัน ถ้าใกล้ 50% แปลว่าไม่ดีกว่าการโยนเหรียญ
+    ใช้เป็นเครื่องมือดูภาพรวม ไม่ใช่สัญญาณเข้าเทรด
+  </p>
+  <section class="scan">
+    <h2>สแกนพยากรณ์ทั้งกลุ่ม</h2>
+    <div class="controls">
+      <label for="group">กลุ่มสัญลักษณ์ <select id="group" style="width:auto"></select></label>
+      <label for="scanTf">Timeframe <select id="scanTf"><option>H1</option><option>H4</option><option selected>D1</option></select></label>
+      <button class="btn" id="scanBtn" type="button">สแกน</button>
+      <span class="s" id="scanInfo">ใช้ค่า “แท่งย้อนหลัง” และ “พยากรณ์ล่วงหน้า” ด้านบน · คลิกแถวเพื่อเปิดกราฟ</span>
+    </div>
+    <div class="tablebox"><table>
+      <thead><tr>
+        <th data-k="symbol">สัญลักษณ์</th><th data-k="last">ราคาล่าสุด</th><th data-k="forecast">พยากรณ์</th>
+        <th data-k="change_pct">เปลี่ยน %</th><th data-k="hit">ทายทิศถูก (ย้อนหลัง)</th><th data-k="band">อยู่ในช่วง 95%</th><th data-k="tests">จำนวนทดสอบ</th>
+      </tr></thead>
+      <tbody id="scanBody"><tr><td colspan="7" style="text-align:left;color:var(--muted)">เลือกกลุ่ม เช่น หุ้น US แล้วกดสแกน</td></tr></tbody>
+    </table></div>
+    <p class="note">ทายทิศถูกใกล้ 50% แปลว่าไม่ดีกว่าโยนเหรียญ หุ้นที่ตัวเลขสูงในอดีตไม่ได้แปลว่าจะสูงต่อในอนาคต</p>
+  </section>
+  <p class="note">เวลาบนกราฟเป็นเวลาเซิร์ฟเวอร์ของโบรกเกอร์ ข้อมูลอัปเดตทุก 2 วินาทีจาก MT5 ที่เปิดอยู่บนเครื่องนี้</p>
+</div>
+
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+// server.py on this computer; works whether the page is opened from server.py or from a hosted copy (e.g. Vercel)
+const API = 'http://127.0.0.1:8765';
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ---------- indicators ----------
+function ema(v, n) { const k = 2 / (n + 1), out = []; let e = v[0]; v.forEach((x, i) => { e = i ? x * k + e * (1 - k) : x; out.push(e); }); return out; }
+function bollinger(v, n, m) {
+  return v.map((_, i) => { if (i < n - 1) return null; const w = v.slice(i - n + 1, i + 1); const mu = w.reduce((a, b) => a + b) / n;
+    const sd = Math.sqrt(w.reduce((a, b) => a + (b - mu) ** 2, 0) / n); return { mid: mu, up: mu + m * sd, lo: mu - m * sd }; });
+}
+function rsi(v, n = 14) {
+  let g = 0, l = 0;
+  for (let i = 1; i <= n; i++) { const d = v[i] - v[i - 1]; d > 0 ? g += d : l -= d; }
+  g /= n; l /= n;
+  for (let i = n + 1; i < v.length; i++) { const d = v[i] - v[i - 1]; g = (g * (n - 1) + Math.max(d, 0)) / n; l = (l * (n - 1) + Math.max(-d, 0)) / n; }
+  return l === 0 ? 100 : 100 - 100 / (1 + g / l);
+}
+
+// ---------- forecast ----------
+function fit(y) {
+  const n = y.length, xm = (n - 1) / 2, ym = y.reduce((a, b) => a + b) / n;
+  let sxy = 0, sxx = 0; y.forEach((v, x) => { sxy += (x - xm) * (v - ym); sxx += (x - xm) ** 2; });
+  const b = sxy / sxx, a = ym - b * xm;
+  const sd = Math.sqrt(y.reduce((s, v, x) => s + (v - a - b * x) ** 2, 0) / (n - 2));
+  return { a, b, sd, n, xm, sxx, at: x => a + b * x, half: x => 1.96 * sd * Math.sqrt(1 + 1 / n + (x - xm) ** 2 / sxx) };
+}
+function backtest(closes, N, H) {
+  let hit = 0, inBand = 0, total = 0;
+  for (let t = N; t + H - 1 < closes.length; t++) {
+    const f = fit(closes.slice(t - N, t)), x = N - 1 + H, actual = closes[t - 1 + H];
+    if (Math.sign(f.b) === Math.sign(actual - closes[t - 1])) hit++;
+    if (Math.abs(actual - f.at(x)) <= f.half(x)) inBand++;
+    total++;
+  }
+  if (!total) throw new Error('ข้อมูลไม่พอสำหรับทดสอบย้อนหลัง ลดจำนวนแท่งย้อนหลังหรือระยะพยากรณ์');
+  return { hit: hit / total, band: inBand / total, total };
+}
+
+// ---------- chart ----------
+const chart = LightweightCharts.createChart($('chart'), { autoSize: true, timeScale: { timeVisible: true, rightOffset: 4 }, crosshair: { mode: 0 } });
+const candles = chart.addCandlestickSeries();
+const line = o => chart.addLineSeries({ lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, ...o });
+const ema20 = line({}), ema50 = line({}), bbU = line({ lineStyle: 2 }), bbL = line({ lineStyle: 2 });
+const bandHi = line({ lineStyle: 2 }), bandLo = line({ lineStyle: 2 });
+const fcLine = line({ lineWidth: 2, lastValueVisible: true });
+
+function applyTheme() {
+  const muted = css('--muted'), grid = css('--line'), panel = css('--panel');
+  chart.applyOptions({ layout: { background: { color: panel }, textColor: muted, fontFamily: css('--mono') },
+    grid: { vertLines: { color: grid }, horzLines: { color: grid } }, rightPriceScale: { borderColor: grid }, timeScale: { borderColor: grid } });
+  candles.applyOptions({ upColor: css('--up'), downColor: css('--down'), borderVisible: false, wickUpColor: css('--up'), wickDownColor: css('--down') });
+  ema20.applyOptions({ color: css('--ema1') }); ema50.applyOptions({ color: css('--ema2') });
+  bbU.applyOptions({ color: css('--bb') }); bbL.applyOptions({ color: css('--bb') });
+  bandHi.applyOptions({ color: css('--fc') }); bandLo.applyOptions({ color: css('--fc') });
+  fcLine.applyOptions({ color: css('--fc') });
+  if (bars.length) render();
+}
+
+let bars = [];
+const fmt = (x, d = 2) => x.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+function render() {
+  $('err').textContent = '';
+  try {
+    const N = +$('lookback').value, H = +$('horizon').value;
+    if (N >= bars.length) throw new Error(`แท่งย้อนหลัง (${N}) ต้องน้อยกว่าจำนวนแท่งทั้งหมด (${bars.length})`);
+    const closes = bars.map(b => b.close), times = bars.map(b => b.time);
+    const step = times[times.length - 1] - times[times.length - 2];
+    candles.setData(bars);
+
+    const e20 = ema(closes, 20), e50 = ema(closes, 50);
+    const show = $('showEma').checked;
+    ema20.setData(show ? times.map((t, i) => ({ time: t, value: e20[i] })) : []);
+    ema50.setData(show ? times.map((t, i) => ({ time: t, value: e50[i] })) : []);
+    const markers = [];
+    for (let i = 51; i < closes.length; i++) {
+      const prev = e20[i - 1] - e50[i - 1], now = e20[i] - e50[i];
+      if (prev <= 0 && now > 0) markers.push({ time: times[i], position: 'belowBar', color: css('--up'), shape: 'arrowUp' });
+      if (prev >= 0 && now < 0) markers.push({ time: times[i], position: 'aboveBar', color: css('--down'), shape: 'arrowDown' });
+    }
+    candles.setMarkers(show ? markers : []);
+
+    const bb = bollinger(closes, 20, 2), showBb = $('showBb').checked;
+    bbU.setData(showBb ? bb.flatMap((b, i) => b ? [{ time: times[i], value: b.up }] : []) : []);
+    bbL.setData(showBb ? bb.flatMap((b, i) => b ? [{ time: times[i], value: b.lo }] : []) : []);
+
+    const f = fit(closes.slice(-N)), last = closes[closes.length - 1], lastT = times[times.length - 1];
+    // fitted line over the lookback window, then extended H bars into the future
+    const fitted = times.slice(-N).map((t, x) => ({ time: t, value: f.at(x) }));
+    const future = []; for (let h = 1; h <= H; h++) future.push({ time: lastT + h * step, x: N - 1 + h });
+    fcLine.setData([...fitted, ...future.map(p => ({ time: p.time, value: f.at(p.x) }))]);
+    bandHi.setData(future.map(p => ({ time: p.time, value: f.at(p.x) + f.half(p.x) })));
+    bandLo.setData(future.map(p => ({ time: p.time, value: f.at(p.x) - f.half(p.x) })));
+
+    const target = f.at(N - 1 + H), half = f.half(N - 1 + H), bt = backtest(closes, N, H);
+    const r = rsi(closes), trendUp = e20.at(-1) > e50.at(-1), chg = target - last;
+    const cls = x => x >= 0 ? 'up' : 'down', sign = x => (x >= 0 ? '+' : '') + fmt(x);
+    $('stats').innerHTML = [
+      ['ราคาล่าสุด', fmt(last), new Date(lastT * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' (เวลาโบรกเกอร์)', ''],
+      [`พยากรณ์ใน ${H} แท่ง`, fmt(target), `${sign(chg)} (${sign(chg / last * 100)}%)`, cls(chg)],
+      ['ช่วงคาดการณ์ 95%', `${fmt(target - half, 0)}–${fmt(target + half, 0)}`, `±${fmt(half)}`, ''],
+      ['ความชันต่อแท่ง', sign(f.b), `จาก ${N} แท่งล่าสุด`, cls(f.b)],
+      ['แนวโน้ม EMA', trendUp ? 'ขาขึ้น' : 'ขาลง', `EMA20 ${trendUp ? '>' : '<'} EMA50`, trendUp ? 'up' : 'down'],
+      ['RSI 14', fmt(r, 1), r > 70 ? 'ซื้อมากเกิน' : r < 30 ? 'ขายมากเกิน' : 'ปกติ', ''],
+      ['ทดสอบย้อนหลัง: ทายทิศถูก', fmt(bt.hit * 100, 1) + '%', `${bt.total} ครั้ง · เทียบ 50% = โยนเหรียญ`, bt.hit > .55 ? 'up' : bt.hit < .45 ? 'down' : ''],
+      ['ทดสอบย้อนหลัง: อยู่ในช่วง', fmt(bt.band * 100, 1) + '%', 'ควรใกล้ 95% ถ้าช่วงเชื่อถือได้', ''],
+    ].map(([k, v, s, c]) => `<div class="cell"><span class="k">${k}</span><span class="v ${c}">${v}</span><span class="s">${s}</span></div>`).join('');
+  } catch (e) { $('err').textContent = e.message; }
+}
+
+// ---------- live data from server.py ----------
+let key = '', timer = 0;
+async function poll() {
+  const symbol = $('symbol').value.trim().toUpperCase(), tf = $('tf').value;
+  try {
+    const res = await fetch(`${API}/api/bars?symbol=${encodeURIComponent(symbol)}&tf=${tf}&count=700`);
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error);
+    const fresh = `${symbol}/${tf}` !== key;
+    bars = body.bars; key = `${symbol}/${tf}`;
+    $('symTitle').textContent = symbol;
+    $('srcName').textContent = `MT5 ${symbol} ${tf} · Bid ${fmt(body.bid)} / Ask ${fmt(body.ask)} · อัปเดต ${new Date().toLocaleTimeString('th-TH')}`;
+    $('srcPill').textContent = 'สด'; $('srcPill').className = 'pill live';
+    render();
+    if (fresh) chart.timeScale().setVisibleLogicalRange({ from: bars.length - 160, to: bars.length + 30 });
+  } catch (e) {
+    $('srcPill').textContent = 'ขาดการเชื่อมต่อ'; $('srcPill').className = 'pill dead';
+    $('err').textContent = e.message === 'Failed to fetch' ? 'ต่อ server.py ไม่ได้ — เปิด MT5 แล้วรัน python server.py บนเครื่องนี้ก่อน' : e.message;
+  }
+}
+function restart() { clearInterval(timer); poll(); timer = setInterval(poll, 2000); }
+
+$('symbol').addEventListener('change', restart);
+$('tf').addEventListener('change', restart);
+['lookback', 'horizon', 'showEma', 'showBb'].forEach(id => $(id).addEventListener('input', render));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// ---------- scanner ----------
+let scanRows = [], sortKey = 'change_pct', sortDir = -1;
+function drawScan() {
+  const rows = [...scanRows].sort((a, b) => (a[sortKey] > b[sortKey] ? 1 : -1) * sortDir);
+  document.querySelectorAll('th[data-k]').forEach(th => th.dataset.k === sortKey ? th.setAttribute('aria-sort', sortDir > 0 ? 'ascending' : 'descending') : th.removeAttribute('aria-sort'));
+  $('scanBody').innerHTML = rows.map(r => `<tr data-s="${r.symbol}"><td>${r.symbol}</td><td>${fmt(r.last)}</td><td>${fmt(r.forecast)}</td>
+    <td class="${r.change_pct >= 0 ? 'up' : 'down'}">${(r.change_pct >= 0 ? '+' : '') + fmt(r.change_pct)}%</td>
+    <td class="${r.hit > .55 ? 'up' : r.hit < .45 ? 'down' : ''}">${fmt(r.hit * 100, 1)}%</td><td>${fmt(r.band * 100, 1)}%</td><td>${r.tests}</td></tr>`).join('');
+}
+async function runScan() {
+  $('scanBtn').disabled = true; $('scanInfo').textContent = 'กำลังสแกน… (ครั้งแรกอาจนานเพราะ MT5 ต้องโหลดประวัติราคา)';
+  try {
+    const q = new URLSearchParams({ group: $('group').value, tf: $('scanTf').value, lookback: $('lookback').value, horizon: $('horizon').value });
+    const res = await fetch(API + '/api/scan?' + q), body = await res.json();
+    if (!res.ok) throw new Error(body.error);
+    scanRows = body.rows; drawScan();
+    $('scanInfo').textContent = `${body.rows.length} สัญลักษณ์` + (body.skipped.length ? ` · ข้าม ${body.skipped.length} ตัวที่ประวัติราคาไม่พอ` : '') + ' · คลิกแถวเพื่อเปิดกราฟ';
+  } catch (e) { $('scanInfo').textContent = e.message; }
+  $('scanBtn').disabled = false;
+}
+$('scanBtn').addEventListener('click', runScan);
+document.querySelector('thead').addEventListener('click', e => {
+  const k = e.target.dataset.k; if (!k) return;
+  sortDir = k === sortKey ? -sortDir : -1; sortKey = k; drawScan();
+});
+$('scanBody').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-s]'); if (!tr) return;
+  $('symbol').value = tr.dataset.s; $('tf').value = $('scanTf').value; restart(); window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+fetch(API + '/api/groups').then(r => r.json()).then(b => { $('group').innerHTML = b.groups.map(g => `<option value="${g.group}">${g.group} (${g.count})</option>`).join(''); });
+
+applyTheme();
+fetch(API + '/api/symbols').then(r => r.json()).then(b => { $('symbols').innerHTML = b.symbols.map(s => `<option value="${s}">`).join(''); });
+restart();
+</script>
